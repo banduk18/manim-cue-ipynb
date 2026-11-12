@@ -17,8 +17,9 @@ class PythonCommands implements vscode.Disposable {
   private disposed = false;
   constructor(private readonly context: vscode.ExtensionContext, private readonly output: vscode.OutputChannel, private readonly session: Session) {}
   private resource(uri?: vscode.Uri): vscode.Uri {
-    const resource = uri ?? this.session.target?.uri ?? vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
-    if (!resource || resource.scheme !== 'file') throw new Error('Open a Python file on this computer first.');
+    let resource = uri ?? this.session.target?.uri ?? vscode.window.activeTextEditor?.document.uri ?? vscode.window.activeNotebookEditor?.notebook.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+    if (resource?.scheme === 'vscode-notebook-cell') resource = vscode.Uri.file(resource.fsPath);
+    if (!resource || resource.scheme !== 'file') throw new Error('Open a Python or Jupyter Notebook file on this computer first.');
     if (!vscode.workspace.isTrusted) throw new Error('Trust this workspace to check or set up Python.');
     return resource;
   }
@@ -89,7 +90,10 @@ export async function activate(context: vscode.ExtensionContext) {
   const session = new Session(context, output), python = new PythonCommands(context, output, session);
   const command = (id: string, fn: (...args: never[]) => unknown) => vscode.commands.registerCommand(id, (...args) => Promise.resolve(fn(...args as never[])).catch(e => session.failAction(e)));
   context.subscriptions.push(output, session, python,
-    vscode.languages.registerCodeLensProvider({ language: 'python', scheme: 'file' }, session.scenes),
+    vscode.languages.registerCodeLensProvider([
+      { language: 'python', scheme: 'file' },
+      { language: 'python', scheme: 'vscode-notebook-cell' }
+    ], session.scenes),
     command('manimCue.open', (uri?: vscode.Uri, scene?: string) => session.open(uri, scene)),
     command('manimCue.refresh', () => session.refresh()), command('manimCue.refreshTimeline', () => session.refresh(false)),
     command('manimCue.preview', () => session.renderVideo()),
@@ -107,9 +111,15 @@ export async function activate(context: vscode.ExtensionContext) {
       void session.watch.edit(e.document.uri, e.document.isDirty ? undefined : e.document.getText());
     }),
     vscode.workspace.onDidSaveTextDocument(document => { void session.watch.saved(document.uri); }),
+    vscode.workspace.onDidChangeNotebookDocument(e => {
+      void session.watch.edit(e.notebook.uri);
+    }),
+    vscode.workspace.onDidSaveNotebookDocument(notebook => {
+      void session.watch.saved(notebook.uri);
+    }),
     vscode.workspace.onDidChangeConfiguration(e => session.configurationChanged(e)),
   );
-  const watcher = vscode.workspace.createFileSystemWatcher('**/*.{py,cfg,env}');
+  const watcher = vscode.workspace.createFileSystemWatcher('**/*.{py,ipynb,cfg,env}');
   context.subscriptions.push(watcher, watcher.onDidChange(uri => { void session.watch.saved(uri); }), watcher.onDidCreate(uri => { void session.watch.saved(uri); }), watcher.onDidDelete(uri => session.watch.changed(uri)));
   void PythonExtension.api().then(api => {
     context.subscriptions.push(api.environments.onDidChangeActiveEnvironmentPath(() => { void session.environmentChanged().catch(e => session.failAction(e)); }));

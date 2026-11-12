@@ -45,7 +45,12 @@ export class Session implements vscode.Disposable {
   readonly exports: Exports;
   readonly watch = new SourceWatch({
     file: () => this.target?.uri,
-    dirty: uri => vscode.workspace.textDocuments.some(d => d.uri.toString() === uri.toString() && d.isDirty),
+    dirty: uri => {
+      if (uri.fsPath.endsWith('.ipynb')) {
+        return vscode.workspace.notebookDocuments.some(nb => nb.uri.fsPath === uri.fsPath && nb.isDirty);
+      }
+      return vscode.workspace.textDocuments.some(d => d.uri.toString() === uri.toString() && d.isDirty);
+    },
     automatic: uri => vscode.workspace.isTrusted && vscode.workspace.getConfiguration('manimCue', uri as vscode.Uri).get('autoRefreshOnSave', true),
     invalidate: (reason, savedHash) => this.invalidate(reason, savedHash),
     // A running update of the saved file goes on; its results are outdated too.
@@ -105,31 +110,53 @@ export class Session implements vscode.Disposable {
     const opening = ++this.opening;
     if (!vscode.workspace.isTrusted) { await vscode.window.showWarningMessage('Trust this workspace to run Manim scenes.'); return; }
     const remembered = this.context.workspaceState.get<{ uri: string; scene: string; time: number }>('lastScene');
-    let document = uri ? await vscode.workspace.openTextDocument(uri) : vscode.window.activeTextEditor?.document;
-    if (!uri && document?.languageId !== 'python' && remembered) {
-      document = await vscode.workspace.openTextDocument(vscode.Uri.parse(remembered.uri));
-      scene ??= remembered.scene;
+    let targetUri = uri ? (uri.scheme === 'vscode-notebook-cell' ? vscode.Uri.file(uri.fsPath) : uri) : undefined;
+    if (!targetUri) {
+      if (vscode.window.activeTextEditor?.document.languageId === 'python') {
+        targetUri = vscode.window.activeTextEditor.document.uri;
+      } else if (vscode.window.activeNotebookEditor) {
+        targetUri = vscode.window.activeNotebookEditor.notebook.uri;
+      } else if (remembered) {
+        targetUri = vscode.Uri.parse(remembered.uri);
+        scene ??= remembered.scene;
+      }
     }
     if (opening !== this.opening) return;
-    if (!document || document.uri.scheme !== 'file' || document.languageId !== 'python') throw new Error('Open a Python file on this computer first.');
-    if (document.isDirty) {
-      if (await vscode.window.showWarningMessage('Manim Cue runs the saved file. Save it now?', 'Save and Run') !== 'Save and Run') return;
-      if (!await document.save()) return;
+    if (!targetUri || targetUri.scheme !== 'file') throw new Error('Open a Python or Jupyter Notebook file on this computer first.');
+
+    const isNotebook = targetUri.fsPath.endsWith('.ipynb');
+    if (isNotebook) {
+      const notebook = vscode.workspace.notebookDocuments.find(nb => nb.uri.fsPath === targetUri!.fsPath)
+        ?? await vscode.workspace.openNotebookDocument(targetUri);
+      if (notebook.isDirty) {
+        if (await vscode.window.showWarningMessage('Manim Cue runs the saved notebook. Save it now?', 'Save and Run') !== 'Save and Run') return;
+        if (!await notebook.save()) return;
+      }
+      if (!scene && remembered?.uri === targetUri.toString()) scene = remembered.scene;
+      scene ??= await this.scenes.pickNotebook(targetUri);
+    } else {
+      let document = await vscode.workspace.openTextDocument(targetUri);
+      if (!document || document.languageId !== 'python') throw new Error('Open a Python file on this computer first.');
+      if (document.isDirty) {
+        if (await vscode.window.showWarningMessage('Manim Cue runs the saved file. Save it now?', 'Save and Run') !== 'Save and Run') return;
+        if (!await document.save()) return;
+      }
+      if (!scene && remembered?.uri === targetUri.toString()) scene = remembered.scene;
+      scene ??= await this.scenes.pick(document);
     }
-    if (!scene && remembered?.uri === document.uri.toString()) scene = remembered.scene;
-    scene ??= await this.scenes.pick(document);
+
     if (!scene || opening !== this.opening) return;
     if (!/^[\p{ID_Start}_][\p{ID_Continue}]*$/u.test(scene)) throw new Error('Enter the name of a Python class.');
-    const different = !this.target || this.target.uri.toString() !== document.uri.toString() || this.target.scene !== scene;
+    const different = !this.target || this.target.uri.toString() !== targetUri.toString() || this.target.scene !== scene;
     this.exports.invalidate(true); this.exports.close();
     this.cancel(false);
     if (different) {
       this.frame = this.video = this.timeline = this.reference = this.loop = undefined;
       this.watch.reset();
-      const time = remembered?.uri === document.uri.toString() && remembered.scene === scene ? remembered.time : 0;
+      const time = remembered?.uri === targetUri.toString() && remembered.scene === scene ? remembered.time : 0;
       this.time = Number.isFinite(time) && time >= 0 ? time : 0;
     }
-    this.target = { uri: document.uri, scene, column: vscode.window.visibleTextEditors.find(e => e.document.uri.toString() === document.uri.toString())?.viewColumn };
+    this.target = { uri: targetUri, scene, column: vscode.window.visibleTextEditors.find(e => e.document.uri.toString() === targetUri!.toString())?.viewColumn };
     this.remember();
     await this.views.open();
     if (opening === this.opening) await this.refresh();
@@ -143,7 +170,10 @@ export class Session implements vscode.Disposable {
     const document = await vscode.workspace.openTextDocument(target.uri);
     const hash = await fileHash(target.uri.fsPath);
     if (this.target !== target || intent !== this.generation || this.disposed) return;
-    if (document.isDirty) { this.invalidate('Outdated. Save the scene file to update.'); throw new Error('Save the scene file to update.'); }
+    const isDirty = target.uri.fsPath.endsWith('.ipynb')
+      ? (vscode.workspace.notebookDocuments.find(nb => nb.uri.fsPath === target.uri.fsPath)?.isDirty ?? document.isDirty)
+      : document.isDirty;
+    if (isDirty) { this.invalidate('Outdated. Save the scene file to update.'); throw new Error('Save the scene file to update.'); }
     const videoWanted = this.videoWanted;
     this.cancel(false);
     this.watch.updating(hash); this.videoWanted = videoWanted;
@@ -349,7 +379,36 @@ export class Session implements vscode.Disposable {
     const result = this.timeline, target = this.target, generation = this.generation;
     const site = result.timeline.entries[index]?.source;
     if (!site?.path) throw new Error('This entry has no source line in the scene folder.');
-    if (result.outdated || (await vscode.workspace.openTextDocument(target.uri)).isDirty) throw new Error('The scene file changed. Refresh to update the timeline.');
+    const docDirty = (await vscode.workspace.openTextDocument(target.uri)).isDirty;
+    const isDirty = target.uri.fsPath.endsWith('.ipynb')
+      ? (vscode.workspace.notebookDocuments.find(nb => nb.uri.fsPath === target.uri.fsPath)?.isDirty ?? docDirty)
+      : docDirty;
+    if (result.outdated || isDirty) throw new Error('The scene file changed. Refresh to update the timeline.');
+
+    if (target.uri.fsPath.endsWith('.ipynb')) {
+      try {
+        const mapFile = path.join(result.directory, 'sourcemap.json');
+        const mapContent = await fs.readFile(mapFile, 'utf8').catch(() => undefined);
+        if (mapContent) {
+          const sourcemap = JSON.parse(mapContent) as Record<string, { cell: number; line: number }>;
+          const mapped = sourcemap[String(site.line)];
+          if (mapped) {
+            const notebook = await vscode.workspace.openNotebookDocument(target.uri);
+            if (generation !== this.generation) return;
+            await vscode.window.showNotebookDocument(notebook, {
+              selections: [new vscode.NotebookRange(mapped.cell, mapped.cell + 1)],
+            });
+            const cell = notebook.cellAt(mapped.cell);
+            await vscode.window.showTextDocument(cell.document, {
+              selection: new vscode.Range(mapped.line - 1, 0, mapped.line - 1, 0),
+              preserveFocus: false,
+            });
+            return;
+          }
+        }
+      } catch { /* Fallback to standard text document navigation */ }
+    }
+
     const root = path.dirname(await fs.realpath(result.source));
     const file = await fs.realpath(path.resolve(root, site.path));
     const relative = path.relative(root, file);

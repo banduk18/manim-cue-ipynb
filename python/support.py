@@ -72,6 +72,34 @@ def diagnose():
     return report
 
 
+def resolve_source(request):
+    """If source is a .ipynb file, extract code cells into an executable .py file in run dir with a sourcemap."""
+    source = Path(request["source"])
+    if source.suffix.lower() == ".ipynb":
+        run = Path(request["run"])
+        extracted = run / f"_cue_{source.stem}.py"
+        if not extracted.is_file():
+            notebook = json.loads(source.read_text(encoding="utf-8"))
+            lines = []
+            mapping = {}
+            curr_line = 1
+            for cell_idx, cell in enumerate(notebook.get("cells", [])):
+                if cell.get("cell_type") == "code":
+                    src = "".join(cell.get("source", []))
+                    for cell_line_idx, l in enumerate(src.splitlines(True), 1):
+                        stripped = l.lstrip()
+                        clean = "# [magic] " + l if stripped.startswith(("%", "!", "?")) else l
+                        lines.append(clean)
+                        mapping[curr_line] = {"cell": cell_idx, "line": cell_line_idx}
+                        curr_line += 1
+                    lines.append("\n")
+                    curr_line += 1
+            extracted.write_text("".join(lines), encoding="utf-8")
+            write_json(run / "sourcemap.json", mapping)
+        return extracted
+    return source
+
+
 def prepare(request):
     """Write the Manim configuration of this run and return its profile."""
     report = diagnose()
@@ -85,6 +113,7 @@ def prepare(request):
     from manim import config
     run = Path(request["run"])
     source = Path(request["source"])
+    actual_source = resolve_source(request)
     project = Path.cwd() / "manim.cfg"
     user = Path.home() / ("AppData/Roaming/Manim/manim.cfg" if os.name == "nt" else ".config/manim/manim.cfg")
     parser = configparser.ConfigParser()
@@ -99,7 +128,7 @@ def prepare(request):
     assets = config.get_dir("assets_dir", module_name=source.stem, scene_name=request["scene"])
     seed = config.seed if config.seed is not None else 0
     overrides = {
-        "input_file": source, "output_file": run / "media" / "preview.mp4",
+        "input_file": actual_source, "output_file": run / "media" / "preview.mp4",
         "format": "mp4", "renderer": "cairo", "frame_rate": request["fps"],
         "pixel_width": width, "pixel_height": height,
         "frame_width": config.frame_width, "frame_height": config.frame_height,
@@ -111,6 +140,7 @@ def prepare(request):
         "from_animation_number": 0, "upto_animation_number": -1,
         "progress_bar": "none", "assets_dir": (assets or Path.cwd()).absolute(),
     }
+
     if export:
         overrides["frame_height"] = config.frame_width * height / width
     configs = {str(p): digest(p) if p.is_file() else None for p in (project, user)}
@@ -164,8 +194,12 @@ def inspect_scene(request):
     from manim.utils.module_ops import scene_classes_from_file
     check_source(request)
     config.digest_file(Path(request["run"]) / "cue.cfg")
+    source_dir = str(Path(request["source"]).parent.resolve())
+    if source_dir not in sys.path:
+        sys.path.insert(0, source_dir)
     sys.path.insert(0, os.getcwd())
-    matches = [cls for cls in scene_classes_from_file(Path(request["source"]), full_list=True) if cls.__name__ == request["scene"]]
+    actual_source = resolve_source(request)
+    matches = [cls for cls in scene_classes_from_file(Path(actual_source), full_list=True) if cls.__name__ == request["scene"]]
     if len(matches) != 1:
         raise CueError(f"The file has no scene class named {request['scene']}.")
     scene = matches[0]()
@@ -203,16 +237,21 @@ def render_scene(request):
     """Render the video with Manim's CLI and, if requested, the timeline of the same run."""
     prepare(request)
     check_source(request)
+    source_dir = str(Path(request["source"]).parent.resolve())
+    if source_dir not in sys.path:
+        sys.path.insert(0, source_dir)
     sys.path.insert(0, os.getcwd())
+    actual_source = resolve_source(request)
     timeline = ["--timeline-output", request["timeline"]] if request.get("timeline") else []
     sys.argv = ["manim", "--config_file", str(Path(request["run"]) / "cue.cfg"), "--silent", "--progress_bar", "none",
-                "-o", request["output"], *timeline, request["source"], request["scene"]]
+                "-o", request["output"], *timeline, str(actual_source), request["scene"]]
     try:
         runpy.run_module("manim", run_name="__main__", alter_sys=True)
     except SystemExit as exit:
         if exit.code:
             raise
     check_source(request)
+
 
 
 if __name__ == "__main__":

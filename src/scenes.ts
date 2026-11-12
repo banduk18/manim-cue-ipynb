@@ -11,11 +11,11 @@ export class Scenes implements vscode.CodeLensProvider, vscode.Disposable {
   constructor(private readonly helper: string) {}
   invalidate(): void { this.cache.clear(); for (const c of this.active) c.abort(); this.changed.fire(); }
   async candidates(document: vscode.TextDocument, token?: vscode.CancellationToken): Promise<Candidate[]> {
-    if (!vscode.workspace.isTrusted || document.uri.scheme !== 'file' || document.getText().length > 2 * 1024 * 1024) return [];
+    if (!vscode.workspace.isTrusted || (document.uri.scheme !== 'file' && document.uri.scheme !== 'vscode-notebook-cell') || document.getText().length > 2 * 1024 * 1024) return [];
     const key = document.uri.toString(), version = document.version;
     const cached = this.cache.get(key); if (cached?.version === version) return cached.scenes;
     const source = document.getText();
-    if (!/\bmanim\b/.test(source)) return [];
+    if (!/\b(manim|Scene)\b/.test(source)) return [];
     const abort = new AbortController(); this.active.add(abort);
     const subscription = token?.onCancellationRequested(() => abort.abort());
     try {
@@ -36,6 +36,21 @@ export class Scenes implements vscode.CodeLensProvider, vscode.Disposable {
   async pick(document: vscode.TextDocument): Promise<string | undefined> {
     const candidates = await this.candidates(document);
     let scene = candidates.length === 1 ? candidates[0].name : await vscode.window.showQuickPick([...candidates.map(c => c.name), 'Enter scene name…'], { placeHolder: 'Select a scene' });
+    if (scene === 'Enter scene name…') scene = await vscode.window.showInputBox({ prompt: 'Name of the scene class' });
+    return scene;
+  }
+  /** The scene class from all cells in a notebook: the only one, or the user's choice. */
+  async pickNotebook(notebookUri: vscode.Uri): Promise<string | undefined> {
+    const notebook = await vscode.workspace.openNotebookDocument(notebookUri);
+    const candidateSet = new Set<string>();
+    for (const cell of notebook.getCells()) {
+      if (cell.kind === vscode.NotebookCellKind.Code) {
+        const found = await this.candidates(cell.document);
+        for (const s of found) candidateSet.add(s.name);
+      }
+    }
+    const candidates = [...candidateSet];
+    let scene = candidates.length === 1 ? candidates[0] : await vscode.window.showQuickPick([...candidates, 'Enter scene name…'], { placeHolder: 'Select a scene' });
     if (scene === 'Enter scene name…') scene = await vscode.window.showInputBox({ prompt: 'Name of the scene class' });
     return scene;
   }

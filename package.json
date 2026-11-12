@@ -1,21 +1,24 @@
 {
-  "name": "manim-cue",
-  "displayName": "Manim Cue",
-  "description": "See the frames, the timeline and the video of a Manim scene while you edit it in VS Code.",
+  "name": "manim-cue-ipynb",
+  "displayName": "Manim Cue (Jupyter Notebooks)",
+  "description": "See the frames, the timeline and the video of a Manim scene while you edit it in VS Code (.py & .ipynb).",
   "version": "0.3.1",
-  "publisher": "behackl",
+  "publisher": "banduk18",
   "private": true,
   "preview": true,
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/behackl/manim-cue.git" },
-  "homepage": "https://github.com/behackl/manim-cue#readme",
-  "bugs": { "url": "https://github.com/behackl/manim-cue/issues" },
+  "repository": { "type": "git", "url": "https://github.com/banduk18/manim-cue-ipynb.git" },
+  "homepage": "https://github.com/banduk18/manim-cue-ipynb#readme",
+  "bugs": { "url": "https://github.com/banduk18/manim-cue-ipynb/issues" },
   "keywords": [
     "manim",
     "animation",
     "preview",
     "timeline",
     "python",
+    "jupyter",
+    "notebook",
+    "ipynb",
     "video"
   ],
   "engines": {
@@ -28,7 +31,8 @@
   "icon": "resources/icon.png",
   "main": "./dist/extension.cjs",
   "activationEvents": [
-    "onLanguage:python"
+    "onLanguage:python",
+    "onNotebook:jupyter-notebook"
   ],
   "extensionKind": [
     "workspace"
@@ -120,6 +124,13 @@
     },
     "menus": {
       "editor/title": [
+        {
+          "command": "manimCue.open",
+          "when": "resourceLangId == python || resourceExtname == .ipynb",
+          "group": "navigation"
+        }
+      ],
+      "notebook/cell/title": [
         {
           "command": "manimCue.open",
           "when": "resourceLangId == python",

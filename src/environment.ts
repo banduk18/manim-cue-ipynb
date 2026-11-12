@@ -8,23 +8,25 @@ export interface PythonEnvironment {
   python: string; env: NodeJS.ProcessEnv; selection: string;
 }
 export function workingDirectoryFor(uri: vscode.Uri): string {
-  const root = vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath ?? path.dirname(uri.fsPath);
-  return path.resolve(root, vscode.workspace.getConfiguration('manimCue', uri).get('workingDirectory', '') || '.');
+  const fileUri = uri.scheme === 'vscode-notebook-cell' ? vscode.Uri.file(uri.fsPath) : uri;
+  const root = vscode.workspace.getWorkspaceFolder(fileUri)?.uri.fsPath ?? path.dirname(fileUri.fsPath);
+  return path.resolve(root, vscode.workspace.getConfiguration('manimCue', fileUri).get('workingDirectory', '') || '.');
 }
 
 /** No Python executable for the scene: "Check Python" helps. */
 export class PythonNotFound extends Error {}
 export async function environmentFor(uri: vscode.Uri): Promise<PythonEnvironment> {
+  const fileUri = uri.scheme === 'vscode-notebook-cell' ? vscode.Uri.file(uri.fsPath) : uri;
   if (!vscode.workspace.isTrusted) throw new Error('Trust this workspace to run Python.');
-  const override = vscode.workspace.getConfiguration('manimCue', uri).get<string>('pythonPath', '').trim();
+  const override = vscode.workspace.getConfiguration('manimCue', fileUri).get<string>('pythonPath', '').trim();
   const api = await PythonExtension.api();
   await api.ready;
-  const selected = override ? undefined : api.environments.getActiveEnvironmentPath(uri);
+  const selected = override ? undefined : api.environments.getActiveEnvironmentPath(fileUri);
   const environment = selected ? await api.environments.resolveEnvironment(selected) : undefined;
   const python = override || environment?.executable.uri?.fsPath;
   if (override && !path.isAbsolute(override)) throw new PythonNotFound('Set “Manim Cue: Python Path” to an absolute path.');
   if (!python) throw new PythonNotFound('Select a Python interpreter with “Python: Select Interpreter”.');
-  const env: NodeJS.ProcessEnv = { ...process.env, ...api.environments.getEnvironmentVariables(uri) };
+  const env: NodeJS.ProcessEnv = { ...process.env, ...api.environments.getEnvironmentVariables(fileUri) };
   const key = Object.keys(env).find(k => k.toLowerCase() === 'path') ?? 'PATH';
   env[key] = `${path.dirname(python)}${path.delimiter}${env[key] ?? ''}`;
   return { python, env, selection: override ? 'manimCue.pythonPath override' : `Python extension selection for this file: ${selected!.path}` };

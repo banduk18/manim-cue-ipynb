@@ -58,6 +58,21 @@ class NotAScene: pass
         with self.assertRaises(SyntaxError):
             discover("class (")
 
+    def test_notebook_magics_and_json(self):
+        # Magic lines should be commented out and not break discovery or line numbers
+        source_with_magic = "%%manim -ql MyScene\nfrom manim import *\nclass MyScene(Scene): pass"
+        self.assertEqual(discover(source_with_magic), [{"name": "MyScene", "line": 3}])
+
+        # JSON notebook format
+        nb_json = json.dumps({
+            "cells": [
+                {"cell_type": "markdown", "source": ["# Heading\n"]},
+                {"cell_type": "code", "source": ["%%manim -v WARNING NbScene\n", "class NbScene(Scene):\n", "    pass\n"]}
+            ]
+        })
+        self.assertEqual(discover(nb_json), [{"name": "NbScene", "line": 2}])
+
+
 
 class DiagnosticTests(unittest.TestCase):
     def test_supported_api_reports_module_and_actual_runtime(self):

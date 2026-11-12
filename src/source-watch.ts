@@ -43,17 +43,21 @@ export class SourceWatch {
    * saved. With `text`, the editor is clean again, for example after an undo.
    */
   async edit(uri: FileUri, text?: string): Promise<void> {
-    if (uri.toString() !== this.scene.file()?.toString()) return;
+    const file = this.scene.file();
+    if (!file) return;
+    const same = uri.toString() === file.toString() || uri.fsPath === file.fsPath;
+    if (!same) return;
     if (!this.changes) { this.changes = true; this.scene.edited(); }
-    if (text !== undefined) await this.saved(uri, text);
+    if (text !== undefined) await this.saved(file, text);
   }
   /** A file changed on disk, or was deleted. */
   changed(uri: FileUri): void {
     const file = this.scene.file();
     if (!file) return;
-    if (uri.toString() === file.toString()) void this.edit(uri);
+    const same = uri.toString() === file.toString() || uri.fsPath === file.fsPath;
+    if (same) void this.edit(uri);
     else if (!insideEnvironment(uri.fsPath) &&
-      (uri.fsPath.endsWith('.py') || uri.fsPath.endsWith('manim.cfg') || path.basename(uri.fsPath) === '.env')) {
+      (uri.fsPath.endsWith('.py') || uri.fsPath.endsWith('.ipynb') || uri.fsPath.endsWith('manim.cfg') || path.basename(uri.fsPath) === '.env')) {
       this.scene.invalidate('Outdated. A project file changed. Refresh to update.');
     }
   }
@@ -62,7 +66,10 @@ export class SourceWatch {
    * that before its dirty state is right, so only an edit back to the saved content counts.
    */
   async saved(uri: FileUri, text?: string): Promise<void> {
-    if (uri.toString() !== this.scene.file()?.toString()) { this.changed(uri); return; }
+    const file = this.scene.file();
+    if (!file) return;
+    const same = uri.toString() === file.toString() || uri.fsPath === file.fsPath;
+    if (!same) { this.changed(uri); return; }
     let check = ++this.check;
     try {
       const bytes = await fs.readFile(uri.fsPath), hash = createHash('sha256').update(bytes).digest('hex');

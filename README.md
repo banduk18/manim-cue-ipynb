@@ -1,19 +1,26 @@
 # Manim Cue (Jupyter Notebooks)
 
+> [!NOTE]
+> **About this Fork**:
+> This repository is a fork of [behackl/manim-cue](https://github.com/behackl/manim-cue). While the original extension is designed strictly for `.py` Python files, this fork extends Manim Cue to work seamlessly with **Jupyter Notebooks (`.ipynb`)** in VS Code.
+
 Manim Cue shows the frames, the timeline and the video of a Manim scene in VS Code while
 you edit the scene — supporting both Python files (`.py`) and Jupyter Notebooks (`.ipynb`).
 
 ![Manim Cue showing Python source, a scene preview, playback controls and the timeline in VS Code](resources/screenshots/overview.png)
 
-- **Jupyter Notebook (`.ipynb`) support**: Click **▶ Open Manim Cue** directly above scene classes inside notebook cells.
-- See the frame at the selected time soon after you save.
-- Read the plays, waits, sections, captions and sounds of the scene on a timeline.
-- Play the video, and loop a part of it.
-- Go from a timeline entry to its line in the Python source or notebook cell.
-- Compare two frames with a wipe or an overlay.
-- Measure coordinates and distances in scene units.
-- Save a frame, the video or the timeline, or render a new video.
-
+### 🌟 Key Features of this Fork
+- **Full Jupyter Notebook (`.ipynb`) support**:
+  - **In-cell CodeLens**: Displays **▶ Open Manim Cue** directly above `Scene` class declarations inside notebook cells.
+  - **IPython Magic Handling**: Automatically filters and handles cell/line magics (such as `%%manim`, `%matplotlib`, and `!pip`) without causing syntax errors or breaking source line numbers.
+  - **Cross-cell Context**: Correctly resolves imports (like `from manim import *`) and helper functions defined in earlier cells.
+  - **Jump-to-Source Navigation**: Clicking an animation block in the timeline view automatically jumps directly to the corresponding notebook cell and line.
+  - **Resilient Environment Detection**: Resolves the Python interpreter and kernel seamlessly across workspace, global settings, and system PATH.
+- **Interactive Timeline**: Read the plays, waits, sections, captions and sounds of the scene on a timeline.
+- **Fast Scrubbing & Live Previews**: See the frame at the selected time soon after you save.
+- **Playback & Loop Selection**: Play the video, scrub frame-by-frame, and loop any timeline selection.
+- **Visual Tools**: Compare frames with a wipe/overlay and measure coordinates and distances in scene units.
+- **Exporting**: Save individual frames, timelines (JSON), or render high-quality videos.
 
 ## Get started
 
@@ -48,10 +55,10 @@ or newer.
 3. Run **Manim Cue: Set Up Python Environment**. Or install Manim yourself and select
    that environment with **Python: Select Interpreter**.
 4. Run **Manim Cue: Check Python Environment**. The result must be **Ready**.
-5. Open a saved Python file with a `Scene` class.
+5. Open a saved Python file (`.py`) or Jupyter Notebook (`.ipynb`) with a `Scene` class.
 6. Click **▶ Open Manim Cue** above the class, or run **Manim Cue: Open Scene**.
 
-To try Cue first, open the example scene `examples/cue_demo.py`.
+To try Cue first, open the example scene `examples/cue_demo.py` or the notebook `examples/cue_demo.ipynb`.
 
 ## Everyday use
 

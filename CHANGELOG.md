@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- Add full support for Jupyter Notebooks (`.ipynb`).
+- Add CodeLens (`▶ Open Manim Cue`) above scene classes inside notebook cells.
+- Automatically filter and comment out IPython magics (`%%manim`, `%...`, `!...`).
+- Support cross-cell scene definitions, variables, and imports.
+- Jump directly to the notebook cell and line from the timeline.
+- Enhanced Python interpreter auto-discovery across notebook kernels, workspaces, and system PATH.
+
 ## 0.3.1
 
 - Install Manim from its `main` branch. The new Manim API is merged there; the

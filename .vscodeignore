@@ -18,3 +18,5 @@ dist/*.map
 dist/smoke.cjs
 pnpm-workspace.yaml
 **/__pycache__/**
+**/media/**
+

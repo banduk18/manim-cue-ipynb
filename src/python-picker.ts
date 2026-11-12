@@ -4,11 +4,15 @@ import { PythonExtension } from '@vscode/python-extension';
 
 /** Explicit Cue-only override. Never install packages or alter the Python extension's selection. */
 export async function selectPythonFor(uri: vscode.Uri): Promise<boolean> {
+  const fileUri = uri.scheme === 'vscode-notebook-cell' ? vscode.Uri.file(uri.fsPath) : uri;
   if (!vscode.workspace.isTrusted) throw new Error('Trust this workspace to set up Python.');
   const api = await PythonExtension.api();
   await api.ready;
-  const current = vscode.workspace.getConfiguration('manimCue', uri).get<string>('pythonPath', '');
-  const selected = api.environments.getActiveEnvironmentPath(uri).path;
+  if (api.environments.known.length === 0) {
+    await api.environments.refreshEnvironments().catch(() => {});
+  }
+  const current = vscode.workspace.getConfiguration('manimCue', fileUri).get<string>('pythonPath', '');
+  const selected = api.environments.getActiveEnvironmentPath(fileUri)?.path || api.environments.getActiveEnvironmentPath()?.path || '';
   type Choice = vscode.QuickPickItem & { executable?: string; action?: 'follow' | 'enter' };
   const choices: Choice[] = [
     { label: 'Use “Python: Select Interpreter”', description: current ? undefined : 'Active', detail: `Selected for this file: ${selected}`, action: 'follow' },
@@ -23,7 +27,7 @@ export async function selectPythonFor(uri: vscode.Uri): Promise<boolean> {
       description: executable === current ? 'Active' : undefined, detail: executable, executable });
   }
   const choice = await vscode.window.showQuickPick(choices, {
-    title: `Python for Manim Cue — ${path.basename(uri.fsPath)}`,
+    title: `Python for Manim Cue — ${path.basename(fileUri.fsPath)}`,
     placeHolder: 'Choose a Python interpreter', matchOnDetail: true,
   });
   if (!choice) return false;
@@ -34,7 +38,7 @@ export async function selectPythonFor(uri: vscode.Uri): Promise<boolean> {
     validateInput: value => path.isAbsolute(value.trim()) ? undefined : 'Enter the full path.',
   });
   if (executable === undefined) return false;
-  const folder = vscode.workspace.getWorkspaceFolder(uri);
+  const folder = vscode.workspace.getWorkspaceFolder(fileUri);
   // Loose files have no folder settings. Explain any broader scope before applying it.
   const hasWorkspace = !!(vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length);
   const scope = folder ? `workspace folder “${folder.name}”` : hasWorkspace
@@ -45,7 +49,7 @@ export async function selectPythonFor(uri: vscode.Uri): Promise<boolean> {
     { modal: true }, 'Apply',
   );
   if (answer !== 'Apply') return false;
-  await vscode.workspace.getConfiguration('manimCue', uri).update('pythonPath', executable.trim(),
+  await vscode.workspace.getConfiguration('manimCue', fileUri).update('pythonPath', executable.trim(),
     folder ? vscode.ConfigurationTarget.WorkspaceFolder : hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global);
   return true;
 }

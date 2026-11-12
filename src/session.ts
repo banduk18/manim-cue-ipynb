@@ -426,7 +426,18 @@ export class Session implements vscode.Disposable {
     if (!this.target) { void vscode.window.showInformationMessage('Open a scene to export.'); return; }
     this.exports.requestOpen = true; await this.views.open(); this.views.update();
   }
-  failAction(e: unknown): void { if (!this.disposed) void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)); }
+  failAction(e: unknown): void {
+    if (this.disposed) return;
+    const message = e instanceof Error ? e.message : String(e);
+    if (e instanceof PythonNotFound || message.includes('Python interpreter')) {
+      void vscode.window.showErrorMessage(message, 'Select Python…', 'Check Python…').then(action => {
+        if (action === 'Select Python…') void vscode.commands.executeCommand('manimCue.selectPython', this.target?.uri);
+        else if (action === 'Check Python…') void vscode.commands.executeCommand('manimCue.doctor', this.target?.uri);
+      });
+    } else {
+      void vscode.window.showErrorMessage(message);
+    }
+  }
   /** Removes the run folders and media files that no result and no export uses. */
   private async cleanup(): Promise<void> {
     const idle = () => !this.queue.busy && !this.preparing && !this.exports.busy;

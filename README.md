@@ -1,17 +1,19 @@
-# Manim Cue
+# Manim Cue (Jupyter Notebooks)
 
 Manim Cue shows the frames, the timeline and the video of a Manim scene in VS Code while
-you edit the scene.
+you edit the scene — supporting both Python files (`.py`) and Jupyter Notebooks (`.ipynb`).
 
 ![Manim Cue showing Python source, a scene preview, playback controls and the timeline in VS Code](resources/screenshots/overview.png)
 
+- **Jupyter Notebook (`.ipynb`) support**: Click **▶ Open Manim Cue** directly above scene classes inside notebook cells.
 - See the frame at the selected time soon after you save.
 - Read the plays, waits, sections, captions and sounds of the scene on a timeline.
 - Play the video, and loop a part of it.
-- Go from a timeline entry to its line in the Python source.
+- Go from a timeline entry to its line in the Python source or notebook cell.
 - Compare two frames with a wipe or an overlay.
 - Measure coordinates and distances in scene units.
 - Save a frame, the video or the timeline, or render a new video.
+
 
 ## Get started
 
